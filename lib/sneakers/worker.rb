@@ -48,15 +48,16 @@ module Sneakers
       @pool.process do
         res = nil
         error = nil
+        context = {}
 
         begin
           metrics.increment("work.#{self.class.name}.started")
           Timeout.timeout(@timeout_after, WorkerTimeout) do
             metrics.timing("work.#{self.class.name}.time") do
               if @call_with_params
-                res = work_with_params(msg, delivery_info, metadata)
+                res, context = work_with_params(msg, delivery_info, metadata)
               else
-                res = work(msg)
+                res, context = work(msg)
               end
             end
           end
@@ -69,6 +70,8 @@ module Sneakers
           worker_error(ex, log_msg: log_msg(msg), message: msg, delivery_info: delivery_info, metadata: metadata)
         end
 
+        context ||= {}
+
         if @should_ack
 
           if res == :ack
@@ -79,7 +82,7 @@ module Sneakers
           elsif res == :error
             handler.error(delivery_info, metadata, msg, error)
           elsif res == :reject
-            handler.reject(delivery_info, metadata, msg)
+            handler.reject(delivery_info, metadata, msg, false, context)
           elsif res == :requeue
             handler.reject(delivery_info, metadata, msg, true)
           else

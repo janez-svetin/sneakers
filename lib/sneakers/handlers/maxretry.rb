@@ -32,6 +32,7 @@ module Sneakers
     #   back to the worker queue.
     #
     class Maxretry
+      include Sneakers::ErrorReporter
 
       def initialize(channel, queue, opts)
         @worker_queue_name = queue.name
@@ -86,13 +87,13 @@ module Sneakers
         @channel.acknowledge(hdr.delivery_tag, false)
       end
 
-      def reject(hdr, props, msg, requeue = false)
+      def reject(hdr, props, msg, requeue = false, context = {})
         if requeue
           # This was explicitly rejected specifying it be requeued so we do not
           # want it to pass through our retry logic.
           @channel.reject(hdr.delivery_tag, requeue)
         else
-          handle_retry(hdr, props, msg, :reject)
+          handle_retry(hdr, props, msg, :reject, context)
         end
       end
 
@@ -117,9 +118,12 @@ module Sneakers
       # @param msg [String] The message
       # @param reason [String, Symbol, Exception] Reason for the retry, included
       #   in the JSON we put on the error exchange.
-      def handle_retry(hdr, props, msg, reason)
+      def handle_retry(hdr, props, msg, reason, context = {})
         # +1 for the current attempt
         num_attempts = failure_count(props[:headers]) + 1
+
+        worker_error(context[:exception], context)
+
         if num_attempts <= @max_retries
           # We call reject which will route the message to the
           # x-dead-letter-exchange (ie. retry exchange) on the queue
@@ -134,6 +138,7 @@ module Sneakers
           Sneakers.logger.info do
             "#{log_prefix} msg=failing, retry_count=#{num_attempts}, reason=#{reason}"
           end
+
           data = {
             error: reason,
             num_attempts: num_attempts,
@@ -148,6 +153,7 @@ module Sneakers
               end
             end
           end.to_json
+
           @error_exchange.publish(data, :routing_key => hdr.routing_key)
           @channel.acknowledge(hdr.delivery_tag, false)
           # TODO: metrics
