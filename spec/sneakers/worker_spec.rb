@@ -57,7 +57,7 @@ class AcksWorker
     elsif msg == :nack
       nack!
     elsif msg == :reject
-      reject!
+      [reject!, {}]
     else
       msg
     end
@@ -380,7 +380,7 @@ describe Sneakers::Worker do
 
       it "should work and handle rejects" do
         handler = Object.new
-        mock(handler).reject(@delivery_info, nil, :reject)
+        mock(handler).reject(@delivery_info, nil, :reject, false, {})
 
         @worker.do_work(@delivery_info, nil, :reject, handler)
       end

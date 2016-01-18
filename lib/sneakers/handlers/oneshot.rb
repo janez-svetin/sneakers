@@ -10,7 +10,7 @@ module Sneakers
         @channel.acknowledge(hdr.delivery_tag, false)
       end
 
-      def reject(hdr, props, msg, requeue=false)
+      def reject(hdr, props, msg, requeue=false, context = {})
         @channel.reject(hdr.delivery_tag, requeue)
       end
 
