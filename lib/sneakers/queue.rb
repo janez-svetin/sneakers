@@ -31,6 +31,8 @@ class Sneakers::Queue
     routing_key = @opts[:routing_key] || @name
     routing_keys = [*routing_key]
 
+    @stop = false
+
     # TODO: get the arguments from the handler? Retry handler wants this so you
     # don't have to line up the queue's dead letter argument with the exchange
     # you'll create for retry.
@@ -50,15 +52,18 @@ class Sneakers::Queue
     handler = handler_klass.new(@channel, queue, worker.opts)
 
     @consumer = queue.subscribe(:block => false, :manual_ack => @opts[:ack]) do | delivery_info, metadata, msg |
-      worker.do_work(delivery_info, metadata, msg, handler)
+      if @stop
+        @consumer.cancel if @consumer
+        @consumer = nil
+      else
+        worker.do_work(delivery_info, metadata, msg, handler)
+      end
     end
     nil
   end
 
   def unsubscribe
-    # XXX can we cancel bunny and channel too?
-    @consumer.cancel if @consumer
-    @consumer = nil
+    @stop = true
   end
 
   def create_bunny_connection
